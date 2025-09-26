@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import colorchooser
 from PIL import Image, ImageDraw, ImageTk
 import math
+import random
 
 # ===================== 眼珠生成函数 =====================
 def generate_eyeball(size=256, iris_radius_ratio=0.45, pupil_radius_ratio=0.3,
@@ -32,9 +33,15 @@ def generate_eyeball(size=256, iris_radius_ratio=0.45, pupil_radius_ratio=0.3,
                 x = int(center + i*math.cos(math.radians(angle)))
                 y = int(center + i*math.sin(math.radians(angle)))
                 draw.point((x,y), fill=iris_color)
-        elif iris_texture=='stripes':
-            for y in range(center-iris_r, center+iris_r, 4):
-                draw.line([(center-iris_r,y),(center+iris_r,y)], fill=iris_color+(50,), width=1)
+        elif iris_texture=='wavy':
+            offset = int(5 * math.sin(i/5))
+            bbox = [center-i+offset, center-i, center+i+offset, center+i]
+            color = tuple(min(255, int(iris_color[j]*(1-i/iris_r))) for j in range(3))
+            draw.ellipse(bbox, outline=color)
+        elif iris_texture=='rings':
+            if i % 5 == 0:
+                color = tuple(min(255, int(iris_color[j]*(1-i/iris_r))) for j in range(3))
+                draw.ellipse([center-i, center-i, center+i, center+i], outline=color)
 
     # 3. 瞳孔
     pupil_r = int(pupil_radius_ratio*iris_r)
@@ -47,6 +54,8 @@ def generate_eyeball(size=256, iris_radius_ratio=0.45, pupil_radius_ratio=0.3,
     elif pupil_shape=='slit':
         bbox = [center-pupil_r//4, center-pupil_r, center+pupil_r//4, center+pupil_r]
         draw.ellipse(bbox, fill=pupil_color)
+    elif pupil_shape=='cat':
+        draw.rectangle([center- pupil_r//6, center- pupil_r, center+ pupil_r//6, center+ pupil_r], fill=pupil_color)
 
     # 4. 高光
     if highlight:
@@ -85,10 +94,10 @@ class EyeballGenerator:
         tk.Scale(root, from_=0.05, to=0.7, resolution=0.01, orient=tk.HORIZONTAL, variable=self.pupil_radius_ratio, command=lambda e:self.update()).grid(row=2,column=1)
 
         tk.Label(root,text="瞳孔形状").grid(row=1,column=2)
-        tk.OptionMenu(root, self.pupil_shape, 'circle','ellipse','slit', command=lambda e:self.update()).grid(row=1,column=3)
+        tk.OptionMenu(root, self.pupil_shape, 'circle','ellipse','slit','cat', command=lambda e:self.update()).grid(row=1,column=3)
 
         tk.Label(root,text="虹膜纹理").grid(row=2,column=2)
-        tk.OptionMenu(root, self.iris_texture, 'radial','spokes','stripes', command=lambda e:self.update()).grid(row=2,column=3)
+        tk.OptionMenu(root, self.iris_texture, 'radial','spokes','wavy','rings', command=lambda e:self.update()).grid(row=2,column=3)
 
         tk.Checkbutton(root,text="高光",variable=self.highlight, command=self.update).grid(row=3,column=0)
 
