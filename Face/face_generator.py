@@ -9,18 +9,13 @@ from datetime import datetime
 def draw_oval_face(draw, center, size, skin_color, outline_color, params):
     x, y = center
     outline_w = params.get('outline_width', 4)
-    width_ratio = params.get('width_ratio', 1.3)  # 默认宽比高大 30%
-
-    # 允许的最大水平半径
-    max_half_width = size * 0.9  # 留一点边距
-    half_width = min(size / width_ratio, max_half_width)  # 宽窄控制在合理范围
-
-    # 垂直半径保持 size
+    width_ratio = params.get('width_ratio', 1.3)  # 默认宽比高大
+    # 控制水平半径比高度窄
+    half_width = min(size / width_ratio, size)
     draw.ellipse((x - half_width, y - size, x + half_width, y + size),
                  fill=skin_color, outline=outline_color, width=outline_w)
 
 def draw_round_face(draw, center, size, skin_color, outline_color, params):
-    # 圆脸保持宽高相等
     draw.ellipse((center[0]-size, center[1]-size, center[0]+size, center[1]+size),
                  fill=skin_color, outline=outline_color, width=params.get('outline_width', 4))
 
@@ -95,7 +90,6 @@ def generate_face(shape='椭圆脸', skin_color=(255,224,189), outline_color=(0,
                   size=150, params=None, with_features=False):
     if params is None:
         params = {}
-    # 椭圆脸默认宽高比例
     if shape == '椭圆脸' and 'width_ratio' not in params:
         params['width_ratio'] = 1.3
     img = Image.new("RGBA", (size*2, size*2), (255,255,255,0))
@@ -127,7 +121,7 @@ class FaceGenerator:
         self.build_random_page(self.frame_random)
         self.notebook.select(self.frame_custom)
 
-    # ========== 自定义页面 ==========
+    # ===== 自定义页面 =====
     def build_custom_page(self, frame):
         top_frame = tk.Frame(frame)
         top_frame.pack(side='top', fill='x', pady=5)
@@ -142,15 +136,12 @@ class FaceGenerator:
         tk.Checkbutton(frame, text="启用五官", variable=self.features_var,
                        command=self.toggle_features).pack()
 
-        # 中间主区域，左画布，右滑块
         main_frame = tk.Frame(frame)
         main_frame.pack(fill='both', expand=True, pady=5)
 
-        # 左侧画布
         self.canvas_custom = tk.Canvas(main_frame, width=300, height=300, bg="white")
         self.canvas_custom.pack(side='left', padx=10)
 
-        # 右侧五官参数（加滚动条）
         feature_container = tk.Frame(main_frame)
         feature_container.pack(side='left', fill='y', padx=10)
 
@@ -168,7 +159,6 @@ class FaceGenerator:
         canvas_scroll.pack(side="left", fill="y")
         scrollbar.pack(side="right", fill="y")
 
-        # 创建滑块
         self.scale_eye_w = tk.Scale(self.feature_frame, from_=5, to=60, orient="horizontal", label="眼睛宽度")
         self.scale_eye_h = tk.Scale(self.feature_frame, from_=5, to=30, orient="horizontal", label="眼睛高度")
         self.scale_eye_offset = tk.Scale(self.feature_frame, from_=10, to=80, orient="horizontal", label="眼距")
@@ -183,8 +173,7 @@ class FaceGenerator:
             w.bind("<B1-Motion>", lambda e:self.update_canvas_custom())
             w.bind("<ButtonRelease-1>", lambda e:self.update_canvas_custom())
 
-        self.feature_frame.pack_forget()  # 初始隐藏
-
+        self.feature_frame.pack_forget()
         tk.Button(frame, text="生成并保存", command=self.generate_and_save_custom).pack(pady=5)
 
         self.combo_shape.bind("<<ComboboxSelected>>", lambda e:self.update_canvas_custom())
@@ -197,7 +186,7 @@ class FaceGenerator:
             self.feature_frame.pack_forget()
         self.update_canvas_custom()
 
-    # ========== 随机生成页面 ==========
+    # ===== 随机生成页面 =====
     def build_random_page(self, frame):
         top_frame = tk.Frame(frame)
         top_frame.pack(side='top', fill='x', pady=5)
@@ -212,7 +201,7 @@ class FaceGenerator:
         self.random_imgs = []
         self.random_img_objs = []
 
-    # ========== 共用 ==========
+    # ===== 共用 =====
     def choose_color(self, target):
         c = colorchooser.askcolor()[0]
         if not c: return
@@ -255,20 +244,23 @@ class FaceGenerator:
         img.save(filename)
         print(f"已保存: {filename}")
 
-    # ========== 随机生成优化版 ==========
+    # ===== 随机生成优化版 =====
     def generate_random_faces(self):
         num = self.random_num_var.get()
         self.random_imgs.clear()
         self.random_img_objs.clear()
         self.canvas_random.delete("all")
 
-        canvas_size = 600
+        canvas_width = 600
+        canvas_height = 600
         padding = 10
-        max_face_size = 150
-        cols = min(num, 5)  # 最多5列
+        max_cols = 5
+        cols = min(num, max_cols)
         rows = (num + cols - 1) // cols
-        face_size = min(max_face_size, (canvas_size - padding*(cols+1)) // cols)
-        self.canvas_random.config(width=canvas_size, height=max(canvas_size, face_size*rows + padding*(rows+1)))
+
+        # 动态计算每个脸型的大小
+        face_size = min(150, (canvas_width - (cols+1)*padding)//cols)
+        self.canvas_random.config(width=canvas_width, height=max(canvas_height, face_size*rows + (rows+1)*padding))
 
         for idx in range(num):
             shape = random.choice(list(FACE_SHAPES.keys()))
@@ -283,7 +275,6 @@ class FaceGenerator:
                 'mouth_w': random.randint(face_size//4, face_size//2),
                 'mouth_h': random.randint(face_size//24, face_size//12)
             }
-            # 椭圆脸随机宽高比
             if shape == '椭圆脸':
                 params['width_ratio'] = random.uniform(1.2, 1.5)
 
