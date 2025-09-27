@@ -9,10 +9,20 @@ from datetime import datetime
 def draw_oval_face(draw, center, size, skin_color, outline_color, params):
     x, y = center
     outline_w = params.get('outline_width', 4)
-    draw.ellipse((x-size, y-size, x+size, y+size), fill=skin_color, outline=outline_color, width=outline_w)
+    width_ratio = params.get('width_ratio', 1.3)  # 默认宽比高大 30%
+
+    # 允许的最大水平半径
+    max_half_width = size * 0.9  # 留一点边距
+    half_width = min(size / width_ratio, max_half_width)  # 宽窄控制在合理范围
+
+    # 垂直半径保持 size
+    draw.ellipse((x - half_width, y - size, x + half_width, y + size),
+                 fill=skin_color, outline=outline_color, width=outline_w)
 
 def draw_round_face(draw, center, size, skin_color, outline_color, params):
-    draw_oval_face(draw, center, size, skin_color, outline_color, params)
+    # 圆脸保持宽高相等
+    draw.ellipse((center[0]-size, center[1]-size, center[0]+size, center[1]+size),
+                 fill=skin_color, outline=outline_color, width=params.get('outline_width', 4))
 
 def draw_square_face(draw, center, size, skin_color, outline_color, params):
     x, y = center
@@ -57,7 +67,6 @@ FACE_SHAPES = {
 # =================== 五官绘制函数 ===================
 def draw_features(draw, center, size, outline_color, params):
     x, y = center
-    # 五官比例相对脸型大小
     eye_w = params.get('eye_w', size//6)
     eye_h = params.get('eye_h', size//12)
     eye_offset_x = params.get('eye_offset_x', size//3)
@@ -86,6 +95,9 @@ def generate_face(shape='椭圆脸', skin_color=(255,224,189), outline_color=(0,
                   size=150, params=None, with_features=False):
     if params is None:
         params = {}
+    # 椭圆脸默认宽高比例
+    if shape == '椭圆脸' and 'width_ratio' not in params:
+        params['width_ratio'] = 1.3
     img = Image.new("RGBA", (size*2, size*2), (255,255,255,0))
     draw = ImageDraw.Draw(img)
     func = FACE_SHAPES.get(shape, draw_oval_face)
@@ -102,7 +114,6 @@ class FaceGenerator:
         self.skin_color = (255,224,189)
         self.outline_color = (0,0,0)
 
-        # notebook 优先显示自定义页
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True)
 
@@ -131,10 +142,33 @@ class FaceGenerator:
         tk.Checkbutton(frame, text="启用五官", variable=self.features_var,
                        command=self.toggle_features).pack()
 
-        # 五官调整参数
-        self.feature_frame = tk.Frame(frame)
-        self.feature_frame.pack()
+        # 中间主区域，左画布，右滑块
+        main_frame = tk.Frame(frame)
+        main_frame.pack(fill='both', expand=True, pady=5)
 
+        # 左侧画布
+        self.canvas_custom = tk.Canvas(main_frame, width=300, height=300, bg="white")
+        self.canvas_custom.pack(side='left', padx=10)
+
+        # 右侧五官参数（加滚动条）
+        feature_container = tk.Frame(main_frame)
+        feature_container.pack(side='left', fill='y', padx=10)
+
+        canvas_scroll = tk.Canvas(feature_container, width=200, height=300)
+        scrollbar = ttk.Scrollbar(feature_container, orient="vertical", command=canvas_scroll.yview)
+        self.feature_frame = tk.Frame(canvas_scroll)
+
+        self.feature_frame.bind(
+            "<Configure>",
+            lambda e: canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all"))
+        )
+        canvas_scroll.create_window((0,0), window=self.feature_frame, anchor="nw")
+        canvas_scroll.configure(yscrollcommand=scrollbar.set)
+
+        canvas_scroll.pack(side="left", fill="y")
+        scrollbar.pack(side="right", fill="y")
+
+        # 创建滑块
         self.scale_eye_w = tk.Scale(self.feature_frame, from_=5, to=60, orient="horizontal", label="眼睛宽度")
         self.scale_eye_h = tk.Scale(self.feature_frame, from_=5, to=30, orient="horizontal", label="眼睛高度")
         self.scale_eye_offset = tk.Scale(self.feature_frame, from_=10, to=80, orient="horizontal", label="眼距")
@@ -145,15 +179,13 @@ class FaceGenerator:
 
         for w in [self.scale_eye_w, self.scale_eye_h, self.scale_eye_offset,
                   self.scale_nose_w, self.scale_nose_h, self.scale_mouth_w, self.scale_mouth_h]:
-            w.pack(fill='x')
+            w.pack(fill='x', pady=2)
             w.bind("<B1-Motion>", lambda e:self.update_canvas_custom())
             w.bind("<ButtonRelease-1>", lambda e:self.update_canvas_custom())
 
         self.feature_frame.pack_forget()  # 初始隐藏
 
-        self.canvas_custom = tk.Canvas(frame, width=300, height=300, bg="white")
-        self.canvas_custom.pack(pady=5)
-        tk.Button(frame, text="生成并保存", command=self.generate_and_save_custom).pack()
+        tk.Button(frame, text="生成并保存", command=self.generate_and_save_custom).pack(pady=5)
 
         self.combo_shape.bind("<<ComboboxSelected>>", lambda e:self.update_canvas_custom())
         self.update_canvas_custom()
@@ -206,6 +238,7 @@ class FaceGenerator:
                             outline_color=self.outline_color, size=150,
                             params=params, with_features=self.features_var.get())
         self.tk_img_custom = ImageTk.PhotoImage(img)
+        self.canvas_custom.delete("all")
         self.canvas_custom.create_image(150,150,image=self.tk_img_custom)
 
     def generate_and_save_custom(self):
@@ -222,33 +255,48 @@ class FaceGenerator:
         img.save(filename)
         print(f"已保存: {filename}")
 
+    # ========== 随机生成优化版 ==========
     def generate_random_faces(self):
         num = self.random_num_var.get()
         self.random_imgs.clear()
         self.random_img_objs.clear()
         self.canvas_random.delete("all")
-        cols = 3
-        size = 150
+
+        canvas_size = 600
+        padding = 10
+        max_face_size = 150
+        cols = min(num, 5)  # 最多5列
+        rows = (num + cols - 1) // cols
+        face_size = min(max_face_size, (canvas_size - padding*(cols+1)) // cols)
+        self.canvas_random.config(width=canvas_size, height=max(canvas_size, face_size*rows + padding*(rows+1)))
+
         for idx in range(num):
             shape = random.choice(list(FACE_SHAPES.keys()))
             skin_color = tuple(random.randint(180,255) for _ in range(3))
             outline_color = (0,0,0)
-
             params = {
-                'eye_w': random.randint(size//12, size//6),
-                'eye_h': random.randint(size//24, size//12),
-                'eye_offset_x': random.randint(size//6, size//3),
-                'nose_w': random.randint(size//24, size//12),
-                'nose_h': random.randint(size//16, size//8),
-                'mouth_w': random.randint(size//4, size//2),
-                'mouth_h': random.randint(size//24, size//12)
+                'eye_w': random.randint(face_size//12, face_size//6),
+                'eye_h': random.randint(face_size//24, face_size//12),
+                'eye_offset_x': random.randint(face_size//6, face_size//3),
+                'nose_w': random.randint(face_size//24, face_size//12),
+                'nose_h': random.randint(face_size//16, face_size//8),
+                'mouth_w': random.randint(face_size//4, face_size//2),
+                'mouth_h': random.randint(face_size//24, face_size//12)
             }
+            # 椭圆脸随机宽高比
+            if shape == '椭圆脸':
+                params['width_ratio'] = random.uniform(1.2, 1.5)
+
             with_features = random.choice([True, False])
-            img = generate_face(shape, skin_color, outline_color, size, params, with_features)
+            img = generate_face(shape, skin_color, outline_color, face_size, params, with_features)
             imgtk = ImageTk.PhotoImage(img)
-            x_offset = (idx % cols) * size*2
-            y_offset = (idx // cols) * size*2
+
+            col = idx % cols
+            row = idx // cols
+            x_offset = padding + col * (face_size + padding)
+            y_offset = padding + row * (face_size + padding)
             self.canvas_random.create_image(x_offset, y_offset, anchor='nw', image=imgtk)
+
             self.random_imgs.append(imgtk)
             self.random_img_objs.append(img)
 
